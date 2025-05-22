@@ -37,6 +37,15 @@ logger.info(f"PHONE_NUMBER 已设置: {bool(phone_number)}")
 app = Flask(__name__)
 CORS(app)
 
+# 记录所有请求的中间件
+@app.before_request
+def log_request():
+    logger.info(f"收到请求: {request.method} {request.path}")
+    logger.info(f"请求头: {dict(request.headers)}")
+    if request.method == 'POST':
+        logger.info(f"表单数据: {request.form.to_dict()}")
+        logger.info(f"JSON数据: {request.get_json(silent=True)}")
+
 @app.route('/')
 def index():
     logger.info("访问主页")
@@ -67,19 +76,63 @@ def debug():
     
     return jsonify(debug_info)
 
-@app.route('/sms', methods=['POST'])
+@app.route('/echo', methods=['GET', 'POST'])
+def echo():
+    """简单的回显端点，用于测试Webhook"""
+    logger.info("收到回显请求")
+    if request.method == 'POST':
+        return jsonify({
+            "status": "success",
+            "method": "POST",
+            "form_data": request.form.to_dict(),
+            "json_data": request.get_json(silent=True),
+            "headers": dict(request.headers)
+        })
+    else:
+        return jsonify({
+            "status": "success",
+            "method": "GET",
+            "args": request.args.to_dict(),
+            "headers": dict(request.headers)
+        })
+
+@app.route('/sms', methods=['POST', 'GET'])
 def receive_sms():
     """Receive SMS webhook from Twilio"""
+    logger.info("===== SMS Webhook被调用 =====")
+    logger.info(f"请求方法: {request.method}")
+    
+    # 通用消息，适用于GET和POST
+    if request.method == 'GET':
+        logger.info("收到GET请求，这可能不是Twilio发送的")
+        logger.info(f"GET参数: {request.args.to_dict()}")
+        return jsonify({
+            "status": "success", 
+            "message": "SMS endpoint is working, but Twilio should send a POST request"
+        })
+    
     try:
+        # 记录所有收到的表单数据
+        logger.info("===== 详细的表单数据 =====")
+        for key, value in request.form.items():
+            logger.info(f"{key}: {value}")
+        
         # Get incoming message details
         from_number = request.values.get('From', '')
         body = request.values.get('Body', '')
+        message_sid = request.values.get('MessageSid', '')
         
         # Log the received message
-        logger.info(f"收到短信 - 来自: {from_number}, 内容: {body}")
+        logger.info(f"收到短信 - 来自: {from_number}, 内容: {body}, SID: {message_sid}")
         logger.debug(f"完整请求数据: {request.values.to_dict()}")
         
         # You can process the message or store it in a database here
+        
+        # 如果是正确的Twilio请求，应该会在请求中包含這些参数
+        if from_number and body:
+            logger.info("这看起来是一个有效的Twilio SMS请求")
+        else:
+            logger.warning("请求缺少必要的Twilio SMS参数")
         
         return jsonify({"status": "success", "message": "SMS received"})
     except Exception as e:
