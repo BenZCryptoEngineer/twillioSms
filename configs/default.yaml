@@ -1,0 +1,82 @@
+# Tennis Miner Configuration
+# Phase 0 + Phase 1 defaults
+
+project:
+  name: tennis-miner
+  version: 0.1.0
+
+paths:
+  raw_data: tennis_miner/data/raw
+  processed_data: tennis_miner/data/processed
+  cache: tennis_miner/data/cache
+  models: tennis_miner/models/saved
+  reports: reports
+
+data_acquisition:
+  court_vision:
+    tournaments:
+      - australian_open
+      - roland_garros
+    ao_years: [2020, 2021, 2022, 2023, 2024, 2025]
+    rg_years: [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+    rate_limit_delay: 1.0  # seconds between API calls
+    max_retries: 3
+    timeout: 30
+
+  mcp:
+    repo_url: https://github.com/JeffSackmann/tennis_MatchChartingProject
+    clone_dir: external/tennis_MatchChartingProject
+
+  slam_pbp:
+    repo_url: https://github.com/JeffSackmann/tennis_slam_pointbypoint
+    clone_dir: external/tennis_slam_pointbypoint
+
+phase1:
+  # Train/test split
+  test_size: 0.2
+  random_seed: 42
+
+  # Score state features
+  score_features:
+    - set_num
+    - game_num
+    - point_num
+    - server
+    - surface
+    - match_elapsed_mins
+
+  # Shot sequence features (categorical)
+  shot_features:
+    - shot_type       # forehand, backhand, serve, volley, etc.
+    - shot_direction  # 1-9 zone mapping
+    - shot_depth      # deep, mid, short
+    - shot_outcome    # in_play, winner, error
+    - rally_length
+    - shot_num_in_rally
+
+  # Baseline model
+  baseline:
+    model_type: logistic_regression  # or shallow_mlp
+    mlp_hidden_sizes: [64, 32]
+    learning_rate: 0.001
+    max_epochs: 50
+    batch_size: 1024
+
+  # Shot-sequence model
+  sequence_model:
+    model_type: lstm  # or transformer
+    embedding_dim: 32
+    hidden_dim: 128
+    num_layers: 2
+    dropout: 0.2
+    learning_rate: 0.001
+    max_epochs: 100
+    batch_size: 512
+    max_rally_length: 50
+
+  # Validation thresholds (Kill Point #1)
+  kill_point:
+    min_auc_improvement: 0.03
+    min_logloss_improvement: 0.02
+    calibration_tolerance: 0.05
+    significance_level: 0.01
