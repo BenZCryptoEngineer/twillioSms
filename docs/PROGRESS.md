@@ -1,7 +1,7 @@
 # Progress Report — Tennis Miner
 
 **Last updated:** 2026-02-20
-**Current phase:** Phase 0 (Data Acquisition) + Architecture Setup
+**Current phase:** Phase 0 (Data Acquisition) — architecture complete, awaiting data
 
 ---
 
@@ -93,3 +93,44 @@
 | Models not registered | Low | Added registry with factory pattern |
 | Tests shallow (~3 assertions each) | Medium | 80+ tests with edge cases |
 | No inter-module docs | Medium | Added architecture README + module docs |
+
+---
+
+## Next Actions Guide
+
+### Immediate: Complete Phase 0
+
+All code is in place. Only data acquisition remains.
+
+| Step | Command | Source | Risk |
+|------|---------|--------|------|
+| 1. Clone MCP | `python scripts/acquire_mcp.py` | GitHub (free, public) | Low |
+| 2. Clone Slam PBP | `python scripts/acquire_slam_pbp.py` | GitHub (free, public) | Low |
+| 3. Download Court Vision | `pip install courtvisionpython && python scripts/acquire_court_vision.py` | Infosys API (free, no key) | High — may become unavailable |
+| 4. Verify | `python main.py audit` | — | — |
+
+**Phase 0 exit criteria:**
+- MCP audit prints non-zero counts
+- Court Vision JSON files on disk (if API accessible)
+- At least 1 match loadable from each source
+
+### Then: Phase 1 — Kill Point #1
+
+Train baseline (logistic regression) + LSTM on real data, then evaluate:
+
+| Metric | Threshold | Pass = |
+|--------|-----------|--------|
+| AUC improvement | > 0.03 | LSTM beats baseline by 0.03+ |
+| Log-loss improvement | > 0.02 | Prediction quality improves |
+| Calibration | < 5% error | Probabilities are well-calibrated |
+| Bootstrap p-value | < 0.01 | Improvement is statistically significant |
+
+**GO (all pass):** Proceed to Phase 2A — add spatial features ($50-100 GPU)
+**NO-GO (any fail):** Project terminates at $0 sunk cost
+
+### Phase 1 Steps
+1. Load real MCP data through ingestion → features pipeline
+2. Train logistic regression baseline on score-state features
+3. Train LSTM on score-state + shot sequences
+4. Run KP-1 evaluation: `python -m tennis_miner.scripts.train --phase 1`
+5. Write Go/No-Go decision document
