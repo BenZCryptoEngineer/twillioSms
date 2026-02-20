@@ -1,8 +1,7 @@
 """
 Tennis Miner — Per-Shot Win Rate Prediction System
 
-Calculates the probability of winning a point from any game state,
-analogous to AlphaGo's move evaluation applied to tennis.
+Calculates P(win point) from any game state.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

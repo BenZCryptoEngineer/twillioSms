@@ -1,10 +1,10 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "tennis-miner"
-version = "0.1.0"
+version = "0.2.0"
 description = "Per-shot win rate prediction system for tennis"
 requires-python = ">=3.10"
 
@@ -34,6 +34,9 @@ dev = [
 
 [project.scripts]
 tennis-miner = "main:main"
+
+[tool.setuptools.packages.find]
+include = ["tennis_miner*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
