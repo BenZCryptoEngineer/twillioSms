@@ -8,75 +8,102 @@ Tennis Miner is a per-shot win rate prediction system for tennis. Like AlphaGo's
 
 **Phase:** Phase 0 (Data Acquisition) — architecture complete, awaiting data
 **Version:** v0.2.0
-**Date:** 2026-02-20
+**Date:** 2026-02-21
 
 All code, tests (122 cases), and documentation are in place. The only remaining Phase 0 work is acquiring the actual datasets.
 
 ---
 
-## Next Actions Guide
+## Tasks
 
-### Immediate: Complete Phase 0 (Data Acquisition)
+When starting a new session, check which tasks are incomplete and execute them in order.
 
-**Goal:** Download all 3 datasets and verify they load correctly.
+### Task 1: Install project dependencies
+Check if the project is already installed. If not, run:
+```bash
+pip install -e ".[dev]"
+```
 
-#### Step 1: Clone MCP Dataset
+### Task 2: Clone MCP dataset
+Check if `external/tennis_MatchChartingProject/` exists. If not, run:
 ```bash
 python scripts/acquire_mcp.py
 ```
 - Source: `https://github.com/JeffSackmann/tennis_MatchChartingProject`
-- Clones to: `external/tennis_MatchChartingProject/`
 - Free, public, no auth needed
 - Expected: 17,179 matches, 10.15M shots, 2.68M points
+- Verify: directory exists and contains CSV files
 
-#### Step 2: Clone Slam PBP Dataset
+### Task 3: Clone Slam PBP dataset
+Check if `external/tennis_slam_pointbypoint/` exists. If not, run:
 ```bash
 python scripts/acquire_slam_pbp.py
 ```
 - Source: `https://github.com/JeffSackmann/tennis_slam_pointbypoint`
-- Clones to: `external/tennis_slam_pointbypoint/`
 - Free, public, no auth needed
-- Expected: Grand Slam point-by-point data (2011-present)
+- Verify: directory exists and contains CSV files
 
-#### Step 3: Download Court Vision Data (Optional — may be unavailable)
+### Task 4: Download Court Vision data (optional)
+Check if `tennis_miner/data/raw/court_vision/` has JSON files. If not, attempt:
 ```bash
 pip install courtvisionpython
 python scripts/acquire_court_vision.py
 ```
 - Source: Infosys Court Vision (Hawk-Eye) API
-- Saves to: `tennis_miner/data/raw/court_vision/`
 - Free, no API key, but **may become unavailable at any time**
 - Covers: AO 2020-2025, RG 2019-2025
-- Has rate limiting (1s delay between calls)
+- If the API is unavailable or `courtvisionpython` fails to install, skip this task and note it as unavailable. This is expected and acceptable.
 
-#### Step 4: Verify Data Inventory
+### Task 5: Run data audit
+After datasets are acquired, verify everything loaded correctly:
 ```bash
 python main.py audit
 ```
 - Must print non-zero counts for MCP
-- Must load 1 match from each source without errors
+- Must load at least 1 match from each available source
 - Court Vision JSON files on disk (if API was accessible)
+- If audit script fails, manually verify by checking that CSV/JSON files exist in the expected directories
 
-### Phase 0 Completion Criteria
+### Task 6: Run test suite
+Confirm nothing is broken after data acquisition:
+```bash
+pytest tests/ -v
+```
+- All 122 tests should pass
+- If any tests fail, investigate and fix before proceeding
+
+### Task 7: Update PROGRESS.md
+After all above tasks complete, update `docs/PROGRESS.md`:
+- Check off completed items under "Phase 0: Data Acquisition"
+- Note Court Vision status (downloaded or confirmed unavailable)
+- Update the "Last updated" date
+
+---
+
+## Phase 0 Completion Criteria
 - [ ] MCP data cloned and audit shows non-zero counts
 - [ ] Slam PBP data cloned
 - [ ] Court Vision data downloaded (or confirmed unavailable)
 - [ ] At least 1 match loadable from each available source
+- [ ] All tests pass
+
+Once all criteria are met, Phase 0 is complete. Proceed to Phase 1.
 
 ---
 
-### Next: Phase 1 — Discrete V(state) Validation (5-7 days, $0)
+## Phase 1 Tasks (after Phase 0 is complete)
 
-**Goal:** Prove that shot-sequence information predicts better than score-state alone.
-
-#### Steps
+### Task 8: Load real data through pipeline
+```bash
+python -m tennis_miner.scripts.train --phase 1
+```
 1. Load real MCP data through the ingestion → features pipeline
 2. Train logistic regression baseline on score-state features
 3. Train LSTM on score-state + shot sequences
 4. Run Kill Point #1 evaluation
 5. Write Go/No-Go decision document
 
-#### Kill Point #1 Thresholds (ALL must pass)
+### Kill Point #1 Thresholds (ALL must pass)
 
 | Metric | Threshold |
 |--------|-----------|
@@ -85,7 +112,7 @@ python main.py audit
 | Calibration error | < 5% across deciles |
 | Statistical significance (bootstrap) | p < 0.01 |
 
-#### Decision
+### Decision
 - **GO:** All 4 metrics pass → proceed to Phase 2A (spatial features, $50-100 GPU)
 - **NO-GO:** Any metric fails → project terminates, $0 sunk cost
 
