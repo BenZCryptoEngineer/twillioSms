@@ -1,65 +1,141 @@
-# Twilio SMS Receiver
+# Tennis Miner — Per-Shot Win Rate Prediction System
 
-A simple Flask application that receives and fetches SMS messages using Twilio.
+> Calculates P(win point) from any game state. Like AlphaGo's value network, but for tennis.
 
-## 测试提交
+## Architecture Overview
 
-此更改是为了测试Git用户配置。
+```
+tennis_miner/
+├── core/              # Domain objects & shared contracts
+│   ├── schema.py      # Match/Point/Shot dataclasses + validation
+│   └── interfaces.py  # Abstract base classes (DataLoader, Model, Evaluator)
+│
+├── ingestion/         # Data acquisition & normalization (Phase 0)
+│   ├── base.py        # BaseLoader with shared CSV/JSON utilities
+│   ├── mcp.py         # Match Charting Project loader
+│   ├── court_vision.py# Court Vision (Hawk-Eye) loader
+│   ├── slam_pbp.py    # Grand Slam point-by-point loader
+│   └── validator.py   # Post-load data quality checks
+│
+├── features/          # Feature engineering (Phase 0→1 bridge)
+│   ├── encoder.py     # Categorical encoding registry
+│   ├── score.py       # Score-state feature extraction
+│   ├── sequence.py    # Shot-sequence feature extraction
+│   └── spatial.py     # Phase 2 spatial feature extraction
+│
+├── models/            # Model training & inference (Phase 1+)
+│   ├── registry.py    # Model registry (factory pattern)
+│   ├── baseline.py    # Logistic regression baseline
+│   ├── lstm.py        # LSTM shot-sequence model
+│   └── transformer.py # Transformer shot-sequence model
+│
+├── evaluation/        # Metrics, testing, reporting (all phases)
+│   ├── metrics.py     # AUC, log-loss, calibration, Brier
+│   ├── significance.py# Paired bootstrap & statistical tests
+│   ├── kill_point.py  # Kill-point gate evaluation
+│   └── report.py      # Report generation (JSON + text + plots)
+│
+├── orchestration/     # Pipeline coordination
+│   ├── pipeline.py    # Phase-aware pipeline runner
+│   └── config.py      # Config loading + validation
+│
+└── scripts/           # Standalone CLI scripts
+    ├── acquire.py     # Unified data acquisition
+    └── train.py       # Training entry point
+```
 
-## Features
+## Module Responsibilities
 
-- Webhook endpoint to receive SMS messages from Twilio
-- API endpoint to fetch recent messages
-- Ready for deployment on Railway.app
+| Module | Single Responsibility | Input | Output |
+|--------|----------------------|-------|--------|
+| `core` | Domain language — what a Match/Point/Shot IS | None | Type definitions + contracts |
+| `ingestion` | Raw data → validated domain objects | CSV/JSON files | `list[Match]` |
+| `features` | Domain objects → numeric tensors | `list[Match]` | `dict[str, np.ndarray]` |
+| `models` | Tensors → predictions | `np.ndarray` / `torch.Tensor` | `np.ndarray` probabilities |
+| `evaluation` | Predictions → decisions | `(y_true, y_pred)` pairs | Metric dicts + reports |
+| `orchestration` | Wires everything together | Config YAML | Pipeline results |
 
-## Local Development
+## Inter-Module Communication
 
-1. Clone this repository
-2. Create a virtual environment:
-   ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-3. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-4. Create a `.env` file based on `env.example` and add your Twilio credentials:
-   ```
-   cp env.example .env
-   # Edit .env with your actual credentials
-   ```
-5. Run the application:
-   ```
-   python app.py
-   ```
+```
+                    ┌─────────────┐
+                    │    core/    │  (shared types — every module imports this)
+                    │  schema.py  │
+                    │ interfaces  │
+                    └──────┬──────┘
+                           │
+          ┌────────────────┼────────────────┐
+          │                │                │
+    ┌─────▼─────┐   ┌─────▼─────┐   ┌──────▼──────┐
+    │ ingestion │──▶│ features  │──▶│   models    │
+    │           │   │           │   │             │
+    │ list[Match]   │ DataBundle │   │ np.ndarray  │
+    └───────────┘   └───────────┘   └──────┬──────┘
+                                           │
+                                    ┌──────▼──────┐
+                                    │ evaluation  │
+                                    │             │
+                                    │ KP decision │
+                                    └──────┬──────┘
+                                           │
+                                    ┌──────▼──────┐
+                                    │orchestration│
+                                    │  (wiring)   │
+                                    └─────────────┘
+```
 
-## Setting Up Twilio
+### Data Flow Contracts
 
-1. Sign up for a Twilio account at [twilio.com](https://www.twilio.com/)
-2. Get a Twilio phone number with SMS capabilities
-3. Set up a webhook in your Twilio account to point to your `/sms` endpoint
-   - When deployed, this will be: `https://your-railway-app-url.railway.app/sms`
+1. **ingestion → features**: `list[Match]` (validated domain objects)
+2. **features → models**: `DataBundle` (named dict with numpy arrays + metadata)
+3. **models → evaluation**: `(y_true: np.ndarray, y_pred: np.ndarray)`
+4. **evaluation → orchestration**: `KillPointResult` (typed decision object)
 
-## Deploying to Railway.app
+### Rules
+- `core` imports nothing from other modules
+- `ingestion` imports only `core`
+- `features` imports only `core`
+- `models` imports only `core`
+- `evaluation` imports only `core`
+- `orchestration` imports everything — it is the only module that wires dependencies
 
-1. Create an account on [Railway.app](https://railway.app/)
-2. Connect your GitHub repository
-3. Add the following environment variables in Railway:
-   - `TWILIO_ACCOUNT_SID`
-   - `TWILIO_AUTH_TOKEN`
-   - `PHONE_NUMBER`
-4. Deploy your app
-5. After deployment, update your Twilio webhook URL to point to your Railway app
+This ensures any module can be tested in complete isolation.
 
-## API Endpoints
+## Quick Start
 
-- `GET /`: Health check
-- `GET /health`: Health check for Railway
-- `POST /sms`: Webhook for receiving SMS messages from Twilio
-- `GET /messages`: Get recent messages sent to your Twilio number
-  - Optional query parameter: `limit` (default: 10)
+```bash
+# Install
+pip install -e ".[dev]"
 
-## License
+# Phase 0: Download data
+python -m tennis_miner.scripts.acquire --source all
 
-[MIT License](LICENSE)
+# Phase 1: Train + evaluate Kill Point #1
+python -m tennis_miner.scripts.train --phase 1
+
+# Run tests
+pytest tests/ -v
+```
+
+## Phase Roadmap
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full phase plan with kill points.
+
+See [docs/PROGRESS.md](docs/PROGRESS.md) for current project status.
+
+## Module Documentation
+
+Each module has its own README:
+- [core/README.md](docs/modules/core.md) — Domain schema & interfaces
+- [ingestion/README.md](docs/modules/ingestion.md) — Data loaders & validation
+- [features/README.md](docs/modules/features.md) — Feature engineering
+- [models/README.md](docs/modules/models.md) — Model architectures
+- [evaluation/README.md](docs/modules/evaluation.md) — Metrics & kill-point gates
+- [orchestration/README.md](docs/modules/orchestration.md) — Pipeline & config
+
+## Test Plan
+
+See [docs/TEST_PLAN.md](docs/TEST_PLAN.md) for the comprehensive test strategy.
+
+---
+*Copyright (c) 2026 EXPETA TECHNOLOGIES INC. All Rights Reserved.*
